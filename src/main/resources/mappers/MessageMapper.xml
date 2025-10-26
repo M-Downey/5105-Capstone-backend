@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.mapper.MessageMapper">
+  <resultMap id="MsgMap" type="com.example.domain.Message">
+    <id column="id" property="id" />
+    <result column="chat_id" property="chatId" />
+    <result column="role" property="role" />
+    <result column="content" property="content" />
+  </resultMap>
+
+  <insert id="insert" parameterType="com.example.domain.Message" useGeneratedKeys="true" keyProperty="id">
+    INSERT INTO messages (chat_id, role, content) VALUES (#{chatId}, #{role}, #{content})
+  </insert>
+
+  <select id="listByChat" parameterType="long" resultMap="MsgMap">
+    SELECT id, chat_id, role, content FROM messages WHERE chat_id = #{chatId} ORDER BY id ASC
+  </select>
+</mapper>
+
+
+

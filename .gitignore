@@ -1,0 +1,32 @@
+# 排除前端和数据文件夹
+frontend/
+data/
+
+# 排除编译输出和构建文件
+target/
+
+# Maven
+.mvn/
+mvnw
+mvnw.cmd
+*.class
+
+# IDE
+.idea/
+.vscode/
+*.iml
+*.iws
+*.ipr
+
+# 日志文件
+*.log
+
+# 临时文件
+*.swp
+*.swo
+*~
+
+# 系统文件
+.DS_Store
+Thumbs.db
+

@@ -2,6 +2,10 @@
 frontend/
 data/
 
+# 环境变量文件
+.env
+deploy/.env
+
 # 排除编译输出和构建文件
 target/
 
@@ -20,6 +24,7 @@ mvnw.cmd
 
 # 日志文件
 *.log
+logs/
 
 # 临时文件
 *.swp

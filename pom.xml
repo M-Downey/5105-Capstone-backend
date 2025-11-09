@@ -101,6 +101,19 @@
       <artifactId>langchain4j-document-parser-apache-pdfbox</artifactId>
       <version>${langchain4j.version}</version>
     </dependency>
+    <!-- Apache POI for Word document parsing -->
+    <!-- POI 5.x for .docx support -->
+    <dependency>
+      <groupId>org.apache.poi</groupId>
+      <artifactId>poi-ooxml</artifactId>
+      <version>5.2.5</version>
+    </dependency>
+    <!-- POI 4.x for .doc support (HWPF was removed in 5.x) -->
+    <dependency>
+      <groupId>org.apache.poi</groupId>
+      <artifactId>poi-scratchpad</artifactId>
+      <version>4.1.2</version>
+    </dependency>
 
     <!-- Utility -->
     <dependency>
@@ -126,11 +139,13 @@
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-maven-plugin</artifactId>
         <version>${spring.boot.maven.plugin.version}</version>
-        <configuration>
-          <image>
-            <name>rag-chat-backend:latest</name>
-          </image>
-        </configuration>
+        <executions>
+          <execution>
+            <goals>
+              <goal>repackage</goal>
+            </goals>
+          </execution>
+        </executions>
       </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>

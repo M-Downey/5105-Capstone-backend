@@ -41,12 +41,18 @@ public class RagBootstrap implements ApplicationRunner {
                     try {
                         ragService.indexPdf(p);
                         log.info("[RagBootstrap] indexed: {}", p);
-                    } catch (IOException e) {
+                    } catch (Exception e) {
+                        // 捕获所有异常，包括 API 错误，不阻止应用启动
                         log.warn("[RagBootstrap] index failed: {} - {}", p, e.getMessage());
+                        log.debug("[RagBootstrap] index error details", e);
                     }
                 });
         } catch (IOException e) {
             log.warn("[RagBootstrap] scan failed: {}", e.getMessage());
+        } catch (Exception e) {
+            // 捕获其他异常，确保应用可以启动
+            log.warn("[RagBootstrap] unexpected error during indexing: {}", e.getMessage());
+            log.debug("[RagBootstrap] unexpected error details", e);
         }
     }
 }

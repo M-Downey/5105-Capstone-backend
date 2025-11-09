@@ -1,7 +1,9 @@
 package com.example.config;
 
 import dev.langchain4j.model.chat.ChatLanguageModel;
+import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import dev.langchain4j.model.openai.OpenAiChatModel;
+import dev.langchain4j.model.openai.OpenAiStreamingChatModel;
 import dev.langchain4j.model.embedding.EmbeddingModel;
 import dev.langchain4j.model.openai.OpenAiEmbeddingModel;
 import dev.langchain4j.store.embedding.EmbeddingStore;
@@ -26,6 +28,17 @@ public class RagConfig {
     }
 
     @Bean
+    public StreamingChatLanguageModel streamingChatLanguageModel(
+            @Value("${app.openai.api-key}") String apiKey,
+            @Value("${app.openai.model}") String model
+    ) {
+        return OpenAiStreamingChatModel.builder()
+                .apiKey(apiKey)
+                .modelName(model)
+                .build();
+    }
+
+    @Bean
     public EmbeddingModel embeddingModel(
             @Value("${app.openai.api-key}") String apiKey,
             @Value("${app.rag.embedding-model}") String embeddingModel
@@ -41,6 +54,10 @@ public class RagConfig {
         return new InMemoryEmbeddingStore<>();
     }
 }
+
+
+
+
 
 
 

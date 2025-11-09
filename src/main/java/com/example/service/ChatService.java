@@ -66,6 +66,16 @@ public class ChatService {
         log.info("[ChatService] ai reply saved, chatId={}, messageId={}, costMs={}, answerLen={}", chatId, m.getId(), dt, answer == null ? 0 : answer.length());
         return m;
     }
+
+    public Message aiReplySave(Long chatId, String answer) {
+        Message m = new Message();
+        m.setChatId(chatId);
+        m.setRole("assistant");
+        m.setContent(answer);
+        messageMapper.insert(m);
+        log.info("[ChatService] ai reply saved, chatId={}, messageId={}, answerLen={}", chatId, m.getId(), answer == null ? 0 : answer.length());
+        return m;
+    }
 }
 
 

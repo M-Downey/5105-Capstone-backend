@@ -56,15 +56,32 @@ public class ChatService {
 
     public Message aiReply(Long chatId, String userContent) {
         long t0 = System.currentTimeMillis();
+        
+        // 获取RAG引用列表
+        java.util.Set<String> references = ragService.getRagReferences(userContent);
+        
         // 使用带历史上下文的版本
         String answer = ragService.chatWithRag(chatId, userContent);
+        
+        // 添加引用列表（如果有）
+        if (references != null && !references.isEmpty()) {
+            StringBuilder answerWithRefs = new StringBuilder(answer);
+            answerWithRefs.append("\n\n---\n\n");
+            answerWithRefs.append("**📚 参考文档：**\n\n");
+            for (String ref : references) {
+                answerWithRefs.append("- ").append(ref).append("\n");
+            }
+            answer = answerWithRefs.toString();
+        }
+        
         long dt = System.currentTimeMillis() - t0;
         Message m = new Message();
         m.setChatId(chatId);
         m.setRole("assistant");
         m.setContent(answer);
         messageMapper.insert(m);
-        log.info("[ChatService] ai reply saved, chatId={}, messageId={}, costMs={}, answerLen={}", chatId, m.getId(), dt, answer == null ? 0 : answer.length());
+        log.info("[ChatService] ai reply saved, chatId={}, messageId={}, costMs={}, answerLen={}, references={}", 
+                 chatId, m.getId(), dt, answer == null ? 0 : answer.length(), references.size());
         return m;
     }
 

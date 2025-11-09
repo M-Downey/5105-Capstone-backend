@@ -23,6 +23,8 @@ import org.apache.poi.hwpf.HWPFDocument;
 import org.apache.poi.hwpf.extractor.WordExtractor;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.apache.poi.xwpf.extractor.XWPFWordExtractor;
+import com.example.mapper.MessageMapper;
+import com.example.domain.Message;
 
 import java.io.ByteArrayInputStream;
 import java.io.FileInputStream;
@@ -40,13 +42,20 @@ public class RagService {
     private final StreamingChatLanguageModel streamingChatModel;
     private final EmbeddingModel embeddingModel;
     private final EmbeddingStore<TextSegment> embeddingStore;
+    private final MessageMapper messageMapper;
     private static final Logger log = LoggerFactory.getLogger(RagService.class);
+    
+    // 历史消息数量限制，避免token过多
+    private static final int MAX_HISTORY_MESSAGES = 10;
 
-    public RagService(ChatLanguageModel chatModel, StreamingChatLanguageModel streamingChatModel, EmbeddingModel embeddingModel, EmbeddingStore<TextSegment> embeddingStore) {
+    public RagService(ChatLanguageModel chatModel, StreamingChatLanguageModel streamingChatModel, 
+                      EmbeddingModel embeddingModel, EmbeddingStore<TextSegment> embeddingStore,
+                      MessageMapper messageMapper) {
         this.chatModel = chatModel;
         this.streamingChatModel = streamingChatModel;
         this.embeddingModel = embeddingModel;
         this.embeddingStore = embeddingStore;
+        this.messageMapper = messageMapper;
     }
 
     public void indexPdf(Path pdfPath) throws IOException {
@@ -118,6 +127,54 @@ public class RagService {
         log.info("[RagService] indexed {}, path={}, bytes={}, costMs={}", fileType, filePath, fileSize, dt);
     }
 
+    /**
+     * 支持上下文感知的聊天（带历史消息）
+     * @param chatId 会话ID
+     * @param userMessage 用户消息
+     * @return AI回复
+     */
+    public String chatWithRag(Long chatId, String userMessage) {
+        long t0 = System.currentTimeMillis();
+        
+        // 1. 构建RAG上下文
+        String ragContext = buildRagContext(userMessage);
+        
+        // 2. 构建 ChatMessage 列表
+        List<ChatMessage> messages = new ArrayList<>();
+        messages.add(SystemMessage.from(ragContext));
+        
+        // 3. 添加历史消息
+        List<Message> history = messageMapper.listByChat(chatId);
+        int historyCount = 0;
+        if (history != null && !history.isEmpty()) {
+            int startIndex = Math.max(0, history.size() - MAX_HISTORY_MESSAGES);
+            for (int i = startIndex; i < history.size(); i++) {
+                Message msg = history.get(i);
+                if ("user".equals(msg.getRole())) {
+                    messages.add(UserMessage.from(msg.getContent()));
+                    historyCount++;
+                } else if ("assistant".equals(msg.getRole())) {
+                    messages.add(AiMessage.from(msg.getContent()));
+                    historyCount++;
+                }
+            }
+        }
+        
+        // 4. 添加当前用户消息
+        messages.add(UserMessage.from(userMessage));
+        
+        // 5. 调用模型生成回复
+        String resp = chatModel.generate(messages).content().text();
+        
+        long dt = System.currentTimeMillis() - t0;
+        log.info("[RagService] chatWithRag done, chatId={}, queryLen={}, historyMsgs={}, costMs={}", 
+                chatId, userMessage == null ? 0 : userMessage.length(), historyCount, dt);
+        return resp;
+    }
+    
+    /**
+     * 兼容性方法：不带chatId的版本（无历史上下文）
+     */
     public String chatWithRag(String userMessage) {
         long t0 = System.currentTimeMillis();
         Embedding userEmbedding = embeddingModel.embed(userMessage).content();
@@ -161,6 +218,79 @@ public class RagService {
         return prompt;
     }
 
+    /**
+     * 支持上下文感知的流式聊天（带历史消息）
+     * @param chatId 会话ID，用于获取历史消息
+     * @param userMessage 当前用户消息
+     * @param handler 流式响应处理器
+     */
+    public void chatWithRagStreaming(Long chatId, String userMessage, StreamingResponseHandler<AiMessage> handler) {
+        long t0 = System.currentTimeMillis();
+        
+        // 1. 构建基于RAG的系统提示词（包含知识库上下文）
+        String ragContext = buildRagContext(userMessage);
+        
+        // 2. 构建 ChatMessage 列表
+        List<ChatMessage> messages = new ArrayList<>();
+        
+        // 3. 添加系统消息（包含RAG上下文）
+        messages.add(SystemMessage.from(ragContext));
+        
+        // 4. 添加历史消息（提供上下文记忆）
+        List<Message> history = messageMapper.listByChat(chatId);
+        int historyCount = 0;
+        if (history != null && !history.isEmpty()) {
+            // 只取最近的N条消息，避免token过多
+            int startIndex = Math.max(0, history.size() - MAX_HISTORY_MESSAGES);
+            for (int i = startIndex; i < history.size(); i++) {
+                Message msg = history.get(i);
+                if ("user".equals(msg.getRole())) {
+                    messages.add(UserMessage.from(msg.getContent()));
+                    historyCount++;
+                } else if ("assistant".equals(msg.getRole())) {
+                    messages.add(AiMessage.from(msg.getContent()));
+                    historyCount++;
+                }
+            }
+        }
+        
+        // 5. 添加当前用户消息
+        messages.add(UserMessage.from(userMessage));
+        
+        // 6. 调用流式模型生成回复
+        streamingChatModel.generate(messages, handler);
+        
+        long dt = System.currentTimeMillis() - t0;
+        log.info("[RagService] chatWithRagStreaming done, chatId={}, queryLen={}, historyMsgs={}, costMs={}", 
+                chatId, userMessage == null ? 0 : userMessage.length(), historyCount, dt);
+    }
+    
+    /**
+     * 构建RAG上下文（从知识库检索相关内容）
+     */
+    private String buildRagContext(String userMessage) {
+        Embedding userEmbedding = embeddingModel.embed(userMessage).content();
+        List<EmbeddingMatch<TextSegment>> matches = embeddingStore.findRelevant(userEmbedding, 4);
+        StringBuilder context = new StringBuilder();
+        context.append("Answer the question based on the following knowledge context:\n\n");
+        
+        int hit = 0;
+        if (matches != null) {
+            for (EmbeddingMatch<TextSegment> match : matches) {
+                if (match.embedded() != null) {
+                    context.append(match.embedded().text()).append("\n\n");
+                    hit++;
+                }
+            }
+        }
+        
+        log.debug("[RagService] RAG context built, hits={}", hit);
+        return context.toString();
+    }
+    
+    /**
+     * 兼容性方法：不带chatId的版本（无历史上下文）
+     */
     public void chatWithRagStreaming(String userMessage, StreamingResponseHandler<AiMessage> handler) {
         long t0 = System.currentTimeMillis();
         String prompt = buildPrompt(userMessage);

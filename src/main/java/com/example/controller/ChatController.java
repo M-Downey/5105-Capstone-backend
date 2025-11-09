@@ -155,10 +155,10 @@ public class ChatController {
             emitter.complete();
         });
         
-        // 异步执行流式生成
+        // 异步执行流式生成（带历史上下文）
         CompletableFuture.runAsync(() -> {
             try {
-                ragService.chatWithRagStreaming(req.content(), handler);
+                ragService.chatWithRagStreaming(chatId, req.content(), handler);
             } catch (Exception e) {
                 log.error("[ChatController] Failed to start streaming", e);
                 try {

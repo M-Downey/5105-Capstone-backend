@@ -56,7 +56,8 @@ public class ChatService {
 
     public Message aiReply(Long chatId, String userContent) {
         long t0 = System.currentTimeMillis();
-        String answer = ragService.chatWithRag(userContent);
+        // 使用带历史上下文的版本
+        String answer = ragService.chatWithRag(chatId, userContent);
         long dt = System.currentTimeMillis() - t0;
         Message m = new Message();
         m.setChatId(chatId);

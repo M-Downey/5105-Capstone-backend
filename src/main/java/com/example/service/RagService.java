@@ -33,11 +33,27 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Set;
+import java.util.LinkedHashSet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 @Service
 public class RagService {
+    
+    /**
+     * RAG上下文信息，包含系统提示词和引用文档列表
+     */
+    private static class RagContextInfo {
+        String systemPrompt;
+        Set<String> references;
+        
+        RagContextInfo(String systemPrompt, Set<String> references) {
+            this.systemPrompt = systemPrompt;
+            this.references = references;
+        }
+    }
+    
     private final ChatLanguageModel chatModel;
     private final StreamingChatLanguageModel streamingChatModel;
     private final EmbeddingModel embeddingModel;
@@ -116,6 +132,12 @@ public class RagService {
     }
 
     private void indexDocument(Document doc, Path filePath, long fileSize, long startTime, String fileType) {
+        // 提取文件名并添加到文档 metadata
+        String fileName = filePath.getFileName().toString();
+        doc.metadata().put("source", fileName);
+        doc.metadata().put("fileType", fileType);
+        
+        // 分割和索引文档
         DocumentSplitter splitter = DocumentSplitters.recursive(1000, 100);
         EmbeddingStoreIngestor ingestor = EmbeddingStoreIngestor.builder()
                 .documentSplitter(splitter)
@@ -123,8 +145,10 @@ public class RagService {
                 .embeddingStore(embeddingStore)
                 .build();
         ingestor.ingest(doc);
+        
         long dt = System.currentTimeMillis() - startTime;
-        log.info("[RagService] indexed {}, path={}, bytes={}, costMs={}", fileType, filePath, fileSize, dt);
+        log.info("[RagService] indexed {}, path={}, fileName={}, bytes={}, costMs={}", 
+                 fileType, filePath, fileName, fileSize, dt);
     }
 
     /**
@@ -219,6 +243,16 @@ public class RagService {
     }
 
     /**
+     * 获取RAG引用文档列表
+     * @param userMessage 用户消息
+     * @return 引用的文档名称列表
+     */
+    public Set<String> getRagReferences(String userMessage) {
+        RagContextInfo contextInfo = buildRagContextWithReferences(userMessage);
+        return contextInfo.references;
+    }
+    
+    /**
      * 支持上下文感知的流式聊天（带历史消息）
      * @param chatId 会话ID，用于获取历史消息
      * @param userMessage 当前用户消息
@@ -227,8 +261,9 @@ public class RagService {
     public void chatWithRagStreaming(Long chatId, String userMessage, StreamingResponseHandler<AiMessage> handler) {
         long t0 = System.currentTimeMillis();
         
-        // 1. 构建基于RAG的系统提示词（包含知识库上下文）
-        String ragContext = buildRagContext(userMessage);
+        // 1. 构建基于RAG的系统提示词（包含知识库上下文）并获取引用
+        RagContextInfo contextInfo = buildRagContextWithReferences(userMessage);
+        String ragContext = contextInfo.systemPrompt;
         
         // 2. 构建 ChatMessage 列表
         List<ChatMessage> messages = new ArrayList<>();
@@ -261,18 +296,21 @@ public class RagService {
         streamingChatModel.generate(messages, handler);
         
         long dt = System.currentTimeMillis() - t0;
-        log.info("[RagService] chatWithRagStreaming done, chatId={}, queryLen={}, historyMsgs={}, costMs={}", 
-                chatId, userMessage == null ? 0 : userMessage.length(), historyCount, dt);
+        log.info("[RagService] chatWithRagStreaming done, chatId={}, queryLen={}, historyMsgs={}, references={}, costMs={}", 
+                chatId, userMessage == null ? 0 : userMessage.length(), historyCount, contextInfo.references.size(), dt);
     }
     
     /**
-     * 构建RAG上下文（从知识库检索相关内容）
+     * 构建RAG上下文（从知识库检索相关内容）并收集引用信息
      */
-    private String buildRagContext(String userMessage) {
+    private RagContextInfo buildRagContextWithReferences(String userMessage) {
         Embedding userEmbedding = embeddingModel.embed(userMessage).content();
         List<EmbeddingMatch<TextSegment>> matches = embeddingStore.findRelevant(userEmbedding, 4);
         StringBuilder context = new StringBuilder();
         context.append("Answer the question based on the following knowledge context:\n\n");
+        
+        // 收集引用的文档名称（去重）
+        Set<String> references = new LinkedHashSet<>();
         
         int hit = 0;
         if (matches != null) {
@@ -280,12 +318,25 @@ public class RagService {
                 if (match.embedded() != null) {
                     context.append(match.embedded().text()).append("\n\n");
                     hit++;
+                    
+                    // 提取文档名称
+                    String source = match.embedded().metadata("source");
+                    if (source != null && !source.isEmpty()) {
+                        references.add(source);
+                    }
                 }
             }
         }
         
-        log.debug("[RagService] RAG context built, hits={}", hit);
-        return context.toString();
+        log.debug("[RagService] RAG context built, hits={}, references={}", hit, references.size());
+        return new RagContextInfo(context.toString(), references);
+    }
+    
+    /**
+     * 构建RAG上下文（从知识库检索相关内容）- 兼容方法
+     */
+    private String buildRagContext(String userMessage) {
+        return buildRagContextWithReferences(userMessage).systemPrompt;
     }
     
     /**

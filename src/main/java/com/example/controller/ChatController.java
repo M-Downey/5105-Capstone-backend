@@ -18,6 +18,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -85,6 +86,9 @@ public class ChatController {
         // 先保存用户消息
         chatService.userSend(chatId, req.content());
         
+        // 获取RAG引用列表
+        Set<String> references = ragService.getRagReferences(req.content());
+        
         // 创建 SSE emitter，设置超时时间为 5 分钟
         SseEmitter emitter = new SseEmitter(300000L);
         StringBuilder fullResponse = new StringBuilder();
@@ -121,13 +125,26 @@ public class ChatController {
                     if (answer.isEmpty() && response != null && response.content() != null) {
                         answer = response.content().text();
                     }
+                    
+                    // 添加引用列表（如果有）
+                    if (references != null && !references.isEmpty()) {
+                        StringBuilder answerWithRefs = new StringBuilder(answer);
+                        answerWithRefs.append("\n\n---\n\n");
+                        answerWithRefs.append("**📚 参考文档：**\n\n");
+                        for (String ref : references) {
+                            answerWithRefs.append("- ").append(ref).append("\n");
+                        }
+                        answer = answerWithRefs.toString();
+                    }
+                    
                     chatService.aiReplySave(chatId, answer);
                     // 发送完成事件
                     emitter.send(SseEmitter.event()
                         .name("done")
                         .data(""));
                     emitter.complete();
-                    log.info("[ChatController] stream done, chatId={}, answerLen={}", chatId, answer.length());
+                    log.info("[ChatController] stream done, chatId={}, answerLen={}, references={}", 
+                             chatId, answer.length(), references.size());
                 } catch (IOException e) {
                     log.error("[ChatController] Failed to send completion", e);
                     emitter.completeWithError(e);

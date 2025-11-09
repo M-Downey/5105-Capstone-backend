@@ -37,6 +37,22 @@ public class ChatController {
     private final RagService ragService;
     private final ExecutorService executorService;
     private static final Logger log = LoggerFactory.getLogger(ChatController.class);
+    
+    /**
+     * 去除文件名中的UUID前缀
+     * 例如: "a78c2d2a-289e-4062-8ff9-0751eb348cfc_Track_B_Example_QA.pdf" -> "Track_B_Example_QA.pdf"
+     */
+    private String removeUuidPrefix(String filename) {
+        if (filename == null) return null;
+        int underscoreIndex = filename.indexOf('_');
+        if (underscoreIndex > 0 && underscoreIndex < filename.length() - 1) {
+            String prefix = filename.substring(0, underscoreIndex);
+            if (prefix.contains("-")) {
+                return filename.substring(underscoreIndex + 1);
+            }
+        }
+        return filename;
+    }
 
     public ChatController(ChatService chatService, CurrentUserService currentUserService, RagService ragService) {
         this.chatService = chatService;
@@ -132,7 +148,9 @@ public class ChatController {
                         answerWithRefs.append("\n\n---\n\n");
                         answerWithRefs.append("**📚 参考文档：**\n\n");
                         for (String ref : references) {
-                            answerWithRefs.append("- ").append(ref).append("\n");
+                            // 去除UUID前缀，只显示原始文件名
+                            String displayName = removeUuidPrefix(ref);
+                            answerWithRefs.append("- ").append(displayName).append("\n");
                         }
                         answer = answerWithRefs.toString();
                     }

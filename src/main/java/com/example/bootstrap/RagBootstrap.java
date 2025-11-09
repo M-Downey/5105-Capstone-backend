@@ -36,10 +36,10 @@ public class RagBootstrap implements ApplicationRunner {
         log.info("[RagBootstrap] rebuilding index from: {}", root);
         try {
             Files.walk(root)
-                .filter(p -> Files.isRegularFile(p) && p.toString().toLowerCase().endsWith(".pdf"))
+                .filter(Files::isRegularFile)
                 .forEach(p -> {
                     try {
-                        ragService.indexPdf(p);
+                        indexFileByType(p);
                         log.info("[RagBootstrap] indexed: {}", p);
                     } catch (Exception e) {
                         // 捕获所有异常，包括 API 错误，不阻止应用启动
@@ -53,6 +53,26 @@ public class RagBootstrap implements ApplicationRunner {
             // 捕获其他异常，确保应用可以启动
             log.warn("[RagBootstrap] unexpected error during indexing: {}", e.getMessage());
             log.debug("[RagBootstrap] unexpected error details", e);
+        }
+    }
+
+    /**
+     * 根据文件类型调用相应的索引方法
+     */
+    private void indexFileByType(Path filePath) throws IOException {
+        String filename = filePath.getFileName().toString().toLowerCase();
+        
+        // 根据文件扩展名判断文件类型并索引
+        if (filename.endsWith(".pdf")) {
+            ragService.indexPdf(filePath);
+        } else if (filename.endsWith(".txt") || filename.endsWith(".md") || filename.endsWith(".markdown")) {
+            ragService.indexText(filePath);
+        } else if (filename.endsWith(".html") || filename.endsWith(".htm")) {
+            ragService.indexHtml(filePath);
+        } else if (filename.endsWith(".doc") || filename.endsWith(".docx")) {
+            ragService.indexWord(filePath);
+        } else {
+            log.debug("[RagBootstrap] skipping unsupported file: {}", filename);
         }
     }
 }

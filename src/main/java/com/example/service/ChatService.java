@@ -85,7 +85,7 @@ public class ChatService {
         if (references != null && !references.isEmpty()) {
             StringBuilder answerWithRefs = new StringBuilder(answer);
             answerWithRefs.append("\n\n---\n\n");
-            answerWithRefs.append("**📚 参考文档：**\n\n");
+            answerWithRefs.append("**📚 Referenced Documents:**\n\n");
             for (String ref : references) {
                 // 去除UUID前缀，只显示原始文件名
                 String displayName = removeUuidPrefix(ref);

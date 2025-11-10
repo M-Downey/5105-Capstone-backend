@@ -35,7 +35,7 @@ public class DocumentController {
 
     @PreAuthorize("hasRole('ADMIN')")
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable Long id) throws IOException {
+    public ResponseEntity<Void> delete(@PathVariable("id") Long id) throws IOException {
         boolean ok = documentService.delete(id);
         return ok ? ResponseEntity.ok().build() : ResponseEntity.notFound().build();
     }
@@ -48,9 +48,16 @@ public class DocumentController {
 
     @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/{id}")
-    public ResponseEntity<Document> get(@PathVariable Long id) {
+    public ResponseEntity<Document> get(@PathVariable("id") Long id) {
         Document doc = documentService.find(id);
         return doc == null ? ResponseEntity.notFound().build() : ResponseEntity.ok(doc);
+    }
+    
+    @PreAuthorize("hasRole('ADMIN')")
+    @GetMapping("/{id}/content")
+    public ResponseEntity<String> getContent(@PathVariable("id") Long id) throws IOException {
+        String content = documentService.getDocumentContent(id);
+        return content == null ? ResponseEntity.notFound().build() : ResponseEntity.ok(content);
     }
 }
 

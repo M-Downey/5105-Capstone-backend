@@ -99,6 +99,75 @@ public class DocumentService {
     public Document find(Long id) {
         return documentMapper.findById(id);
     }
+    
+    /**
+     * 读取文档内容（简单实现，返回文本）
+     * 对于PDF和Word文档，需要额外处理
+     */
+    public String getDocumentContent(Long id) throws IOException {
+        Document doc = documentMapper.findById(id);
+        if (doc == null || doc.getStoragePath() == null) {
+            return null;
+        }
+        
+        Path filePath = Path.of(doc.getStoragePath());
+        if (!Files.exists(filePath)) {
+            return null;
+        }
+        
+        String filename = doc.getFilename().toLowerCase();
+        
+        // 根据文件类型读取内容
+        if (filename.endsWith(".txt") || filename.endsWith(".md") || filename.endsWith(".html") || filename.endsWith(".htm")) {
+            // 文本文件直接读取
+            return Files.readString(filePath);
+        } else if (filename.endsWith(".pdf")) {
+            // PDF 使用 Apache PDFBox 解析
+            return extractPdfText(filePath);
+        } else if (filename.endsWith(".doc") || filename.endsWith(".docx")) {
+            // Word 使用 Apache POI 解析
+            return extractWordText(filePath);
+        }
+        
+        return "不支持预览此文件类型";
+    }
+    
+    private String extractPdfText(Path pdfPath) throws IOException {
+        try {
+            org.apache.pdfbox.pdmodel.PDDocument document = org.apache.pdfbox.pdmodel.PDDocument.load(pdfPath.toFile());
+            org.apache.pdfbox.text.PDFTextStripper stripper = new org.apache.pdfbox.text.PDFTextStripper();
+            String text = stripper.getText(document);
+            document.close();
+            return text;
+        } catch (Exception e) {
+            throw new IOException("PDF解析失败: " + e.getMessage(), e);
+        }
+    }
+    
+    private String extractWordText(Path wordPath) throws IOException {
+        try {
+            String filename = wordPath.getFileName().toString().toLowerCase();
+            if (filename.endsWith(".docx")) {
+                org.apache.poi.xwpf.usermodel.XWPFDocument document = new org.apache.poi.xwpf.usermodel.XWPFDocument(
+                    new java.io.FileInputStream(wordPath.toFile())
+                );
+                org.apache.poi.xwpf.extractor.XWPFWordExtractor extractor = new org.apache.poi.xwpf.extractor.XWPFWordExtractor(document);
+                String text = extractor.getText();
+                extractor.close();
+                return text;
+            } else {
+                org.apache.poi.hwpf.HWPFDocument document = new org.apache.poi.hwpf.HWPFDocument(
+                    new java.io.FileInputStream(wordPath.toFile())
+                );
+                org.apache.poi.hwpf.extractor.WordExtractor extractor = new org.apache.poi.hwpf.extractor.WordExtractor(document);
+                String text = extractor.getText();
+                extractor.close();
+                return text;
+            }
+        } catch (Exception e) {
+            throw new IOException("Word文档解析失败: " + e.getMessage(), e);
+        }
+    }
 }
 
 
